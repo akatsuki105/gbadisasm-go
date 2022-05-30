@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/pokemium/gbadisasm-go/gbadis"
 )
 
 var version string
@@ -46,6 +48,7 @@ func main() {
 func Run() ExitCode {
 	var (
 		showVersion = flag.Bool("v", false, "show version")
+		configPath  = flag.String("c", "", "cfg file path")
 	)
 
 	flag.Parse()
@@ -54,7 +57,25 @@ func Run() ExitCode {
 		return ExitCodeOK
 	}
 
-	// main routine
+	if flag.NArg() == 0 {
+		fmt.Fprint(os.Stderr, "usage: gbadis ROM_PATH")
+	}
+
+	data, err := os.ReadFile(flag.Arg(0))
+	if err != nil {
+		panic(err)
+	}
+	gbadis.SetROM(data)
+
+	if *configPath != "" {
+		f, err := os.Open(*configPath)
+		if err != nil {
+			panic(err)
+		}
+		gbadis.ReadConfig(f)
+	}
+
+	fmt.Print(gbadis.Disassemble())
 	return ExitCodeOK
 }
 

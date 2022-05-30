@@ -1,0 +1,6 @@
+# RockmanZero3
+
+ロックマンゼロ3(日本版)
+
+`sha1: ff7a801776dc76e6d8c7ef73a6660ae732934a3f`
+
