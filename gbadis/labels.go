@@ -2,10 +2,6 @@ package gbadis
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"strconv"
-	"strings"
 
 	g "github.com/pokemium/gapstone"
 )
@@ -139,48 +135,5 @@ func renewOrAddNewFuncLabel(t LabelType, word uint32) {
 		l.processed = false
 		l.branchType = BL
 		l.isFunc = true
-	}
-}
-
-func ReadConfig(r io.Reader) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		panic(err)
-	}
-
-	labelTypes := map[string]LabelType{
-		"arm_func":   ArmCode,
-		"thumb_func": ThumbCode,
-	}
-
-	lines := strings.Split(string(data), "\n")
-	for l, line := range lines {
-		for i := range line {
-			if !isSpace(line[i]) {
-				line = line[i:]
-				break
-			}
-		}
-
-		// 空行 or コメント行
-		if len(line) == 0 || line[0] == '#' {
-			continue
-		}
-
-		tokens := strings.Split(line, " ")
-		switch d := tokens[0]; d {
-		case "arm_func", "thumb_func":
-			addr, err := strconv.ParseUint(tokens[1][2:], 16, 32)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "syntax error on line %d\n", l)
-				continue
-			}
-			if len(tokens) >= 3 && tokens[2] != "" {
-				addLabel(uint32(addr), labelTypes[d], tokens[2])
-			}
-
-		default:
-			fmt.Fprintf(os.Stderr, "warning: unrecognized command '%s' on line %d\n", d, l)
-		}
 	}
 }

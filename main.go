@@ -49,6 +49,7 @@ func Run() ExitCode {
 	var (
 		showVersion = flag.Bool("v", false, "show version")
 		configPath  = flag.String("c", "", "cfg file path")
+		// allFlag     = flag.Bool("a", false, "generate directories including macros")
 	)
 
 	flag.Parse()
