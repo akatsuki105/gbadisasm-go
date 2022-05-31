@@ -40,179 +40,219 @@ func printDisassembly() string {
 	i := 0
 	addr := uint32(startAddr)
 	for addr < uint32(startAddr+len(gRom)) {
-		l := gLabels[i]
-
-		// TODO: compute actual size during analysis phase
-		if i+1 < len(gLabels) {
-			if l.size == unknownSize || l.addr+l.size > gLabels[i+1].addr {
-				l.size = gLabels[i+1].addr - l.addr
-			}
-		}
-
-		switch l.t {
-		case ArmCode, ThumbCode:
-			mode := l.t.csMode()
-
-			if l.branchType == BL {
-				// This is a function. Use the 'sub_XXXXXXXX' label
-				unalignedMask := uint32(1)
-				if mode == g.CS_MODE_ARM {
-					unalignedMask = 3
-				}
-
-				if addr&unalignedMask > 0 {
-					fmt.Fprintf(os.Stderr, "error: function at 0x%08X is not aligned\n", addr)
-					return b.String()
-				}
-				if l.name != "" {
-					fmt.Fprintf(&b, "\n\t%s %s\n", funcMacro(l.t, addr), l.name)
-					fmt.Fprintf(&b, "%s: @ 0x%08X\n", l.name, addr)
-				} else {
-					fmt.Fprintf(&b, "\n\t%s sub_%08X\n", funcMacro(l.t, addr), addr)
-					fmt.Fprintf(&b, "sub_%08X: @ 0x%08X\n", addr, addr)
-				}
-			} else {
-				// Just a normal code label. Use the '_XXXXXXXX' label
-				if l.name != "" {
-					fmt.Fprintf(&b, "%s:\n", l.name)
-				} else {
-					fmt.Fprintf(&b, "_%08X:\n", addr)
-				}
-			}
-
-			assert(l.size != unknownSize, "")
-			sCapstone.SetOption(g.CS_OPT_MODE, mode)
-			insns, err := sCapstone.Disasm(gRom[addr-startAddr:addr-startAddr+l.size], uint64(addr), 0)
-			if err != nil {
-				panic(err)
-			}
-			for j := range insns {
-			no_inc:
-				insn := &insns[j]
-				if !isValidInstruction(insn, l.t) {
-					if l.t == ThumbCode {
-						fmt.Fprintf(&b, "\t.hword 0x%04X\n", hwordAt(gRom, addr))
-						addr += 2
-						if insn.Size == 2 {
-							continue
-						}
-						tmp, _ := sCapstone.Disasm(gRom[addr-startAddr:addr-startAddr+2], uint64(addr), 0)
-						assert(len(tmp) == 1, "")
-						insns[j] = tmp[0]
-						goto no_inc
-					} else {
-						fmt.Fprintf(&b, "\t.word 0x%08X\n", wordAt(gRom, addr))
-						addr += 4
-						continue
-					}
-				}
-				printInsn(&b, insn, l.t)
-				addr += uint32(insn.Size)
-			}
-
-			// align pool if it comes next
-			if i+1 < len(gLabels) && gLabels[i+1].t == Pool {
-				diff := gLabels[i+1].addr - addr
-				checkZero := func(addr, diff uint32) bool {
-					for i := uint32(0); i < diff; i++ {
-						if gRom[addr-startAddr+i] != 0 {
-							return false
-						}
-					}
-					return true
-				}
-				if diff == 0 || (int(diff) > 0 && diff < 4 && checkZero(addr, diff)) {
-					fmt.Fprintln(&b, "\t.align 2, 0")
-					addr += diff
-				}
-			}
-
-		case Pool:
-			val := wordAt(gRom, addr)
-
-			// e.g. AgbMain+1
-			if val&3 != 0 && val&startAddr != 0 {
-				if l := lookupLabel(val & 0xffff_fffe); l != nil {
-					if l.branchType == BL && l.t == ThumbCode {
-						switch {
-						case l.name != "":
-							// _080FE5A8: .4byte AgbMain
-							fmt.Fprintf(&b, "_%08X: .4byte %s\n", addr, l.name)
-
-						default:
-							fmt.Fprintf(&b, "_%08X: .4byte sub_%08X\n", addr, val&0xffff_fffe)
-						}
-						addr += 4
-						break
-					}
-				}
-			}
-
-			if l := lookupLabel(val); l != nil {
-				if l.t != ThumbCode {
-					switch {
-					case l.name != "":
-						// _080FE5A8: .4byte ReadSram_Core
-						fmt.Fprintf(&b, "_%08X: .4byte %s\n", addr, l.name)
-
-					case l.branchType == BL:
-						fmt.Fprintf(&b, "_%08X: .4byte sub_%08X\n", addr, val)
-
-					default:
-						// _080FE2E8: .4byte _080FE2EC
-						fmt.Fprintf(&b, "_%08X: .4byte _%08X\n", addr, val)
-					}
-					addr += 4
-					break
-				}
-			}
-
-			// _080FE2B4: .4byte 0x68736D53
-			fmt.Fprintf(&b, "_%08X: .4byte 0x%08X\n", addr, val)
-			addr += 4
-
-		/*
-			_080025E8: @ jump table
-				.4byte _080025FC @ case 0
-				.4byte _0800260C @ case 1
-				.4byte _08002624 @ case 2
-				.4byte _08002660 @ case 3
-				.4byte _0800266A @ case 4
-		*/
-		case JumpTable:
-			end := addr + l.size
-
-			// _080025E8: @ jump table
-			fmt.Fprintf(&b, "_%08X: @ jump table\n", addr)
-
-			caseNum := 0
-			for addr < end {
-				word := wordAt(gRom, addr)
-				prefix := "_"
-				if word&startAddr == 0 {
-					prefix = "0x"
-				}
-
-				// .4byte _080025FC @ case N
-				fmt.Fprintf(&b, "\t.4byte %s%08X @ case %d\n", prefix, word, caseNum)
-				caseNum++
-				addr += 4
-			}
-		}
-
+		block := printBlock(i, addr)
+		b.WriteString(block.result)
+		addr = block.addr
 		i++
-		if i >= len(gLabels) {
+		if block.isBreak {
 			break
 		}
-		nextAddr := gLabels[i].addr
-		assert(addr <= nextAddr, fmt.Sprintf("[%d]: 0x%08x, [%d]: 0x%08x", i, addr, i+1, nextAddr))
-		if nextAddr <= uint32(startAddr+len(gRom)) {
-			printGap(&b, addr, nextAddr)
-		}
-		addr = nextAddr
 	}
 
 	return b.String()
+}
+
+type block struct {
+	result  string
+	addr    uint32
+	isBreak bool
+}
+
+func printBlock(i int, addr uint32) block {
+	var b strings.Builder
+
+	l := gLabels[i]
+
+	// TODO: compute actual size during analysis phase
+	if i+1 < len(gLabels) {
+		if l.size == unknownSize || l.addr+l.size > gLabels[i+1].addr {
+			l.size = gLabels[i+1].addr - l.addr
+		}
+	}
+
+	switch l.t {
+	case ArmCode, ThumbCode:
+		mode := l.t.csMode()
+
+		if l.branchType == BL {
+			// This is a function. Use the 'sub_XXXXXXXX' label
+			unalignedMask := uint32(1)
+			if mode == g.CS_MODE_ARM {
+				unalignedMask = 3
+			}
+
+			if addr&unalignedMask > 0 {
+				fmt.Fprintf(os.Stderr, "error: function at 0x%08X is not aligned\n", addr)
+				return block{
+					result:  b.String(),
+					addr:    addr,
+					isBreak: false,
+				}
+			}
+			if l.name != "" {
+				fmt.Fprintf(&b, "\n\t%s %s\n", funcMacro(l.t, addr), l.name)
+				fmt.Fprintf(&b, "%s: @ 0x%08X\n", l.name, addr)
+			} else {
+				fmt.Fprintf(&b, "\n\t%s sub_%08X\n", funcMacro(l.t, addr), addr)
+				fmt.Fprintf(&b, "sub_%08X: @ 0x%08X\n", addr, addr)
+			}
+		} else {
+			// Just a normal code label. Use the '_XXXXXXXX' label
+			if l.name != "" {
+				fmt.Fprintf(&b, "%s:\n", l.name)
+			} else {
+				fmt.Fprintf(&b, "_%08X:\n", addr)
+			}
+		}
+
+		assert(l.size != unknownSize, "")
+		sCapstone.SetOption(g.CS_OPT_MODE, mode)
+		insns, err := sCapstone.Disasm(gRom[addr-startAddr:addr-startAddr+l.size], uint64(addr), 0)
+		if err != nil {
+			panic(err)
+		}
+		for j := range insns {
+		no_inc:
+			insn := &insns[j]
+			if !isValidInstruction(insn, l.t) {
+				if l.t == ThumbCode {
+					fmt.Fprintf(&b, "\t.hword 0x%04X\n", hwordAt(gRom, addr))
+					addr += 2
+					if insn.Size == 2 {
+						continue
+					}
+					tmp, _ := sCapstone.Disasm(gRom[addr-startAddr:addr-startAddr+2], uint64(addr), 0)
+					assert(len(tmp) == 1, "")
+					insns[j] = tmp[0]
+					goto no_inc
+				} else {
+					fmt.Fprintf(&b, "\t.word 0x%08X\n", wordAt(gRom, addr))
+					addr += 4
+					continue
+				}
+			}
+			printInsn(&b, insn, l.t)
+			addr += uint32(insn.Size)
+		}
+
+		// align pool if it comes next
+		if i+1 < len(gLabels) && gLabels[i+1].t == Pool {
+			diff := gLabels[i+1].addr - addr
+			checkZero := func(addr, diff uint32) bool {
+				for i := uint32(0); i < diff; i++ {
+					if gRom[addr-startAddr+i] != 0 {
+						return false
+					}
+				}
+				return true
+			}
+			if diff == 0 || (int(diff) > 0 && diff < 4 && checkZero(addr, diff)) {
+				fmt.Fprintln(&b, "\t.align 2, 0")
+				addr += diff
+			}
+		}
+
+	case Pool:
+		val := wordAt(gRom, addr)
+
+		// e.g. AgbMain+1
+		if val&3 != 0 && val&startAddr != 0 {
+			if l := lookupLabel(val & 0xffff_fffe); l != nil {
+				if l.branchType == BL && l.t == ThumbCode {
+					switch {
+					case l.name != "":
+						// _080FE5A8: .4byte AgbMain
+						fmt.Fprintf(&b, "_%08X: .4byte %s\n", addr, l.name)
+
+					default:
+						fmt.Fprintf(&b, "_%08X: .4byte sub_%08X\n", addr, val&0xffff_fffe)
+					}
+					addr += 4
+					return block{
+						result:  b.String(),
+						addr:    addr,
+						isBreak: false,
+					}
+				}
+			}
+		}
+
+		if l := lookupLabel(val); l != nil {
+			if l.t != ThumbCode {
+				switch {
+				case l.name != "":
+					// _080FE5A8: .4byte ReadSram_Core
+					fmt.Fprintf(&b, "_%08X: .4byte %s\n", addr, l.name)
+
+				case l.branchType == BL:
+					fmt.Fprintf(&b, "_%08X: .4byte sub_%08X\n", addr, val)
+
+				default:
+					// _080FE2E8: .4byte _080FE2EC
+					fmt.Fprintf(&b, "_%08X: .4byte _%08X\n", addr, val)
+				}
+				addr += 4
+				return block{
+					result:  b.String(),
+					addr:    addr,
+					isBreak: false,
+				}
+			}
+		}
+
+		// _080FE2B4: .4byte 0x68736D53
+		fmt.Fprintf(&b, "_%08X: .4byte 0x%08X\n", addr, val)
+		addr += 4
+
+	/*
+		_080025E8: @ jump table
+			.4byte _080025FC @ case 0
+			.4byte _0800260C @ case 1
+			.4byte _08002624 @ case 2
+			.4byte _08002660 @ case 3
+			.4byte _0800266A @ case 4
+	*/
+	case JumpTable:
+		end := addr + l.size
+
+		// _080025E8: @ jump table
+		fmt.Fprintf(&b, "_%08X: @ jump table\n", addr)
+
+		caseNum := 0
+		for addr < end {
+			word := wordAt(gRom, addr)
+			prefix := "_"
+			if word&startAddr == 0 {
+				prefix = "0x"
+			}
+
+			// .4byte _080025FC @ case N
+			fmt.Fprintf(&b, "\t.4byte %s%08X @ case %d\n", prefix, word, caseNum)
+			caseNum++
+			addr += 4
+		}
+	}
+
+	i++
+	if i >= len(gLabels) {
+		return block{
+			result:  b.String(),
+			addr:    addr,
+			isBreak: true,
+		}
+	}
+	nextAddr := gLabels[i].addr
+	assert(addr <= nextAddr, fmt.Sprintf("[%d]: 0x%08x, [%d]: 0x%08x", i, addr, i+1, nextAddr))
+	if nextAddr <= uint32(startAddr+len(gRom)) {
+		printGap(&b, addr, nextAddr)
+	}
+	addr = nextAddr
+
+	return block{
+		result:  b.String(),
+		addr:    addr,
+		isBreak: false,
+	}
 }
 
 // _08000164:
