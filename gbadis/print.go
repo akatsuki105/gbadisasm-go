@@ -39,7 +39,7 @@ func printDisassembly() []string {
 	}
 
 	i := 0
-	old := uint32(0)
+	old := uint32(startAddr)
 	addr := uint32(startAddr)
 	for addr < uint32(startAddr+len(gRom)) {
 		for _, asm := range gFileBegins {
