@@ -15,7 +15,7 @@ func SetROM(data []byte) {
 	gRom = data
 }
 
-func Disassemble() string {
+func Disassemble() []string {
 	cs, err := g.New(
 		g.CS_ARCH_ARM,
 		g.CS_MODE_ARM,
@@ -31,7 +31,7 @@ func Disassemble() string {
 	addLabel(startAddr+4, Data, "")  // rom header
 
 	analyze()
-	return printDisassembly()[0]
+	return printDisassembly()
 }
 
 func analyze() {

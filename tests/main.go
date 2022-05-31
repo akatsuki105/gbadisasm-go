@@ -48,7 +48,7 @@ func Run() ExitCode {
 		args = append(args, "-c", cfgPath)
 	}
 
-	acutal := gbadis.Disassemble()
+	acutal := gbadis.Disassemble()[0]
 	out, err := exec.Command("./tests/gbadisasm", args...).Output()
 	if err != nil {
 		panic(err)

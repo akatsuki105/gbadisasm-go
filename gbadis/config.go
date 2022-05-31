@@ -28,6 +28,17 @@ type asmFile struct {
 
 var gFileBegins = []asmFile{}
 
+func Files() []string {
+	if len(gFileBegins) == 0 {
+		return []string{"main"}
+	}
+	names := make([]string, len(gFileBegins))
+	for i, asm := range gFileBegins {
+		names[i] = asm.name
+	}
+	return names
+}
+
 func ReadConfig(r io.Reader) {
 	data, err := io.ReadAll(r)
 	if err != nil {

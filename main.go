@@ -4,9 +4,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/pokemium/gbadisasm-go/gbadis"
 )
+
+var prefix = `	.include "asm/macros.inc"
+
+	.syntax unified
+	
+	.text
+	`
 
 var version string
 
@@ -49,7 +57,7 @@ func Run() ExitCode {
 	var (
 		showVersion = flag.Bool("v", false, "show version")
 		configPath  = flag.String("c", "", "cfg file path")
-		// allFlag     = flag.Bool("a", false, "generate directories including macros")
+		allFlag     = flag.Bool("a", false, "generate directories including macros")
 	)
 
 	flag.Parse()
@@ -76,7 +84,26 @@ func Run() ExitCode {
 		gbadis.ReadConfig(f)
 	}
 
-	fmt.Print(gbadis.Disassemble())
+	asms := gbadis.Disassemble()
+	if !(*allFlag) {
+		var b strings.Builder
+		for _, asm := range asms {
+			b.WriteString(asm)
+		}
+		fmt.Print(b.String())
+		return ExitCodeOK
+	}
+
+	filenames := gbadis.Files()
+	for i, asm := range asms {
+		f, err := os.OpenFile("./asm/"+filenames[i]+".s", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		f.Write([]byte(prefix + asm))
+	}
+
 	return ExitCodeOK
 }
 
