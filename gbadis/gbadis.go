@@ -31,7 +31,7 @@ func Disassemble() string {
 	addLabel(startAddr+4, Data, "")  // rom header
 
 	analyze()
-	return printDisassembly()
+	return printDisassembly()[0]
 }
 
 func analyze() {

@@ -21,7 +21,12 @@ var labelTypes = map[Token]LabelType{
 	"thumb_func": ThumbCode,
 }
 
-var gFileBegins = []uint32{}
+type asmFile struct {
+	addr uint32
+	name string
+}
+
+var gFileBegins = []asmFile{}
 
 func ReadConfig(r io.Reader) {
 	data, err := io.ReadAll(r)
@@ -63,7 +68,10 @@ func ReadConfig(r io.Reader) {
 				fmt.Fprintf(os.Stderr, "syntax error on line %d\n", l)
 				continue
 			}
-			gFileBegins = append(gFileBegins, uint32(addr))
+			gFileBegins = append(gFileBegins, asmFile{
+				addr: uint32(addr),
+				name: tokens[2],
+			})
 
 		default:
 			fmt.Fprintf(os.Stderr, "warning: unrecognized command '%s' on line %d\n", d, l)

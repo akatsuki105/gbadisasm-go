@@ -11,8 +11,9 @@ import (
 )
 
 // print_disassembly
-func printDisassembly() string {
+func printDisassembly() []string {
 	var b strings.Builder
+	result := []string{}
 
 	sort.Slice(gLabels, func(i, j int) bool {
 		return gLabels[i].addr < gLabels[j].addr
@@ -38,10 +39,19 @@ func printDisassembly() string {
 	}
 
 	i := 0
+	old := uint32(0)
 	addr := uint32(startAddr)
 	for addr < uint32(startAddr+len(gRom)) {
+		for _, asm := range gFileBegins {
+			if addr >= asm.addr && old < asm.addr {
+				s := b.String()
+				b.Reset()
+				result = append(result, s)
+			}
+		}
 		block := printBlock(i, addr)
 		b.WriteString(block.result)
+		old = addr
 		addr = block.addr
 		i++
 		if block.isBreak {
@@ -49,7 +59,11 @@ func printDisassembly() string {
 		}
 	}
 
-	return b.String()
+	if b.Len() > 0 {
+		result = append(result, b.String())
+	}
+
+	return result
 }
 
 type block struct {
