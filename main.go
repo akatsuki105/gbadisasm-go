@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -58,6 +60,7 @@ func Run() ExitCode {
 		showVersion = flag.Bool("v", false, "show version")
 		configPath  = flag.String("c", "", "cfg file path (Default ROM.cfg)")
 		outputDir   = flag.String("d", "", "output directory (e.g. asm)")
+		alwayYes    = flag.Bool("y", false, "treat all confirmation as YES")
 	)
 
 	flag.Parse()
@@ -109,11 +112,14 @@ func Run() ExitCode {
 
 		// create or cleanup output dir
 		dir := strings.TrimSuffix(*outputDir, "/")
-		if !strings.HasPrefix(dir, "./") {
-			dir = "./" + dir
-		}
 		fmt.Println("Output directory: ", dir)
-		os.RemoveAll(dir)
+		if dirExist(dir) {
+			// confirmation
+			if !(*alwayYes) && !askYesNo("Directory already exists, delete all files?") {
+				return ExitCodeError
+			}
+			os.RemoveAll(dir)
+		}
 		os.MkdirAll(dir, 0755)
 
 		for i, asm := range asms {
@@ -142,4 +148,30 @@ func fileExist(fp string) bool {
 		return false
 	}
 	return true
+}
+
+// Check whether dir exists
+func dirExist(dp string) bool {
+	if f, err := os.Stat(dp); os.IsNotExist(err) || !f.IsDir() {
+		return false
+	}
+	return true
+}
+
+func askYesNo(s string) bool {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Printf("%s [y/n]: ", s)
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	response = strings.ToLower(strings.TrimSpace(response))
+
+	if response == "y" || response == "yes" {
+		return true
+	}
+	return false
 }
