@@ -6,3 +6,4 @@ rom
 *.gba
 gbadisasm
 asm/
+main.s

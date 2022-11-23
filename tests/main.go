@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -34,29 +33,40 @@ func Run() ExitCode {
 	}
 
 	romPath := fmt.Sprintf("./tests/%s/%s.gba", name, name)
+	fmt.Println("ROM:    ", romPath)
 	data, err := os.ReadFile(romPath)
 	if err != nil {
 		panic(err)
 	}
 	gbadis.SetROM(data)
 
+	// gbadis(C)'s command arguments
 	args := []string{romPath}
 
 	cfgPath := fmt.Sprintf("./tests/%s/%s.cfg", name, name)
 	if cfg, err := os.Open(cfgPath); err == nil {
+		fmt.Println("Config: ", cfgPath)
 		gbadis.ReadConfig(cfg)
-		args = append(args, "-c", cfgPath)
+		args = []string{"-c", cfgPath, romPath}
 	}
 
-	acutal := gbadis.Disassemble()[0]
-	out, err := exec.Command("./tests/gbadisasm", args...).Output()
-	if err != nil {
-		panic(err)
-	}
-	expected := string(out)
+	actual, expected := make(chan string), make(chan string)
+	go func() {
+		// gbadisgo
+		actual <- strings.Join(gbadis.Disassemble(), "")
+	}()
+	go func() {
+		// gbadis(C)
+		fmt.Println("Command: ./tests/gbadisasm", strings.Join(args, " "))
+		out, err := exec.Command("./tests/gbadisasm", args...).Output()
+		if err != nil {
+			panic(err)
+		}
+		expected <- string(out)
+	}()
 
-	if err := compare(acutal, expected); err != nil {
-		fmt.Fprint(os.Stderr, err)
+	if err := compare(<-actual, <-expected); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		return ExitCodeError
 	}
 
@@ -66,9 +76,6 @@ func Run() ExitCode {
 
 func compare(a, b string) error {
 	als, bls := strings.Split(a, "\n"), strings.Split(b, "\n")
-	if len(als) != len(bls) {
-		return errors.New("line counts don't match")
-	}
 
 	for l := 0; l < len(als); l++ {
 		if als[l] != bls[l] {
@@ -77,6 +84,10 @@ func compare(a, b string) error {
 	Expected: %s
 `, l, als[l], bls[l])
 		}
+	}
+
+	if len(als) != len(bls) {
+		return fmt.Errorf("line counts don't match: (a, b) = (%d, %d)", len(als), len(bls))
 	}
 
 	return nil
