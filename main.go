@@ -99,11 +99,7 @@ func Run() ExitCode {
 
 	if *outputDir == "" {
 		// output stdout
-		var b strings.Builder
-		for _, asm := range asms {
-			b.WriteString(asm)
-		}
-		fmt.Print(b.String())
+		fmt.Print(strings.Join(asms, ""))
 		return ExitCodeOK
 	}
 
