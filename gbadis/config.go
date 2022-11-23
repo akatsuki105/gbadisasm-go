@@ -26,13 +26,9 @@ type asmFile struct {
 	name string
 }
 
-var gFileBegins = []asmFile{
-	{
-		addr: 0x08000000,
-		name: "main",
-	},
-}
+var gFileBegins = []asmFile{}
 
+// e.g. `["main.s", "system.s", "map.s"]`
 func Files() []string {
 	names := make([]string, len(gFileBegins))
 	for i, asm := range gFileBegins {

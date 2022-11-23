@@ -38,9 +38,9 @@ func init() {
 
 	flag.Usage = func() {
 		usage := fmt.Sprintf(`Usage:
-    %s [arg] [input]
-input: a filepath
-Arguments: 
+    %s [OPTIONS] <ROM.gba>
+
+OPTIONS: 
 `, title)
 
 		fmt.Fprint(os.Stderr, usage)
@@ -56,8 +56,8 @@ func main() {
 func Run() ExitCode {
 	var (
 		showVersion = flag.Bool("v", false, "show version")
-		configPath  = flag.String("c", "", "cfg file path")
-		allFlag     = flag.Bool("a", false, "generate directories including macros")
+		configPath  = flag.String("c", "", "cfg file path (Default ROM.cfg)")
+		outputDir   = flag.String("d", "", "output directory (e.g. asm)")
 	)
 
 	flag.Parse()
@@ -67,17 +67,28 @@ func Run() ExitCode {
 	}
 
 	if flag.NArg() == 0 {
-		fmt.Fprint(os.Stderr, "usage: gbadis ROM_PATH")
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <ROM.gba>\n", title)
 	}
 
-	data, err := os.ReadFile(flag.Arg(0))
+	romPath := flag.Arg(0)
+	data, err := os.ReadFile(romPath)
 	if err != nil {
 		panic(err)
 	}
 	gbadis.SetROM(data)
 
-	if *configPath != "" {
-		f, err := os.Open(*configPath)
+	// Read config file
+	config := *configPath
+	if config == "" {
+		// Check default config path, ROM.cfg
+		defaultConfigPath := strings.ReplaceAll(romPath, ".gba", ".cfg")
+		if fileExist(defaultConfigPath) {
+			config = defaultConfigPath
+		}
+	}
+	if config != "" {
+		fmt.Fprintln(os.Stderr, "Config file is found: "+config)
+		f, err := os.Open(config)
 		if err != nil {
 			panic(err)
 		}
@@ -85,7 +96,9 @@ func Run() ExitCode {
 	}
 
 	asms := gbadis.Disassemble()
-	if !(*allFlag) {
+
+	if *outputDir == "" {
+		// output stdout
 		var b strings.Builder
 		for _, asm := range asms {
 			b.WriteString(asm)
@@ -94,14 +107,30 @@ func Run() ExitCode {
 		return ExitCodeOK
 	}
 
-	filenames := gbadis.Files()
-	for i, asm := range asms {
-		f, err := os.OpenFile("./asm/"+filenames[i]+".s", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			panic(err)
+	// output into directory
+	{
+		filenames := gbadis.Files()
+
+		// create or cleanup output dir
+		dir := strings.TrimSuffix(*outputDir, "/")
+		if !strings.HasPrefix(dir, "./") {
+			dir = "./" + dir
 		}
-		defer f.Close()
-		f.Write([]byte(prefix + asm))
+		fmt.Println("Output directory: ", dir)
+		os.RemoveAll(dir)
+		os.MkdirAll(dir, 0755)
+
+		for i, asm := range asms {
+			filepath := fmt.Sprintf("%s/%s.s", dir, filenames[i])
+
+			f, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+
+			f.Write([]byte(prefix + asm))
+		}
 	}
 
 	return ExitCodeOK
@@ -109,4 +138,12 @@ func Run() ExitCode {
 
 func printVersion() {
 	fmt.Println(title+":", version)
+}
+
+// Check whether file exists
+func fileExist(fp string) bool {
+	if f, err := os.Stat(fp); os.IsNotExist(err) || f.IsDir() {
+		return false
+	}
+	return true
 }
