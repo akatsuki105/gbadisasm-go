@@ -61,6 +61,7 @@ func Run() ExitCode {
 		configPath  = flag.String("c", "", "cfg file path (Default ROM.cfg)")
 		outputDir   = flag.String("d", "", "output directory (e.g. asm)")
 		alwayYes    = flag.Bool("y", false, "treat all confirmation as YES")
+		renameApsr  = flag.Bool("apsr", true, "rename apsr by cpsr")
 	)
 
 	flag.Parse()
@@ -99,6 +100,11 @@ func Run() ExitCode {
 	}
 
 	asms := gbadis.Disassemble()
+	if *renameApsr {
+		for i := range asms {
+			asms[i] = strings.ReplaceAll(asms[i], " apsr", " cpsr")
+		}
+	}
 
 	if *outputDir == "" {
 		// output stdout
