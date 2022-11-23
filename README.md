@@ -5,6 +5,6 @@ A Go version clone of [camthesaxman/gbadisasm](https://github.com/camthesaxman/g
 ## Usage
 
 ```sh
-$ make build-windows # macOS: make build-darwin
-$ ./gbadisgo.exe -c ROM_CONFIG.cfg ROM.gba
+> make build-windows # macOS: make build-darwin
+> ./gbadisgo.exe -c ROM_CONFIG.cfg ROM.gba
 ```
